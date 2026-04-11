@@ -2,34 +2,36 @@ import whisper
 import sounddevice as sd
 import numpy as np
 import subprocess
-import wave
-import struct
-import math
-import os
 import time
 
 model = whisper.load_model("base")
 
-def beep(frequency=440, duration=0.1):
-    sr = 44100
-    frames = [
-        struct.pack('<h', int(32767 * math.sin(2 * math.pi * frequency * i / sr)))
-        for i in range(int(sr * duration))
-    ]
-    tmp = "/tmp/beep.wav"
-    w = wave.open(tmp, 'w')
-    w.setnchannels(1)
-    w.setsampwidth(2)
-    w.setframerate(sr)
-    w.writeframes(b''.join(frames))
-    w.close()
-    subprocess.run(['afplay', tmp])
-    os.remove(tmp)
-    time.sleep(0.3)
+GARBAGE = [
+    "thank you", "thanks for watching", "bye", "you",
+    ".", "", " ", "subscribe", "like and subscribe"
+]
+
+def is_garbage(text):
+    t = text.strip().lower()
+    if len(t) < 4:
+        return True
+    if t in GARBAGE:
+        return True
+    if all(c in "0123456789.%, \n" for c in t):
+        return True
+    return False
+
+def beep_start():
+    subprocess.Popen(['afplay', '/System/Library/Sounds/Tink.aiff'])
+    time.sleep(0.5)
+
+def beep_stop():
+    subprocess.Popen(['afplay', '/System/Library/Sounds/Pop.aiff'])
+    time.sleep(0.5)
 
 def listen(duration=5):
     print("🎙 Listening... (speak now)")
-    beep(440, 0.1)
+    beep_start()
 
     audio = sd.rec(
         int(16000 * duration),
@@ -38,13 +40,17 @@ def listen(duration=5):
         dtype="float32"
     )
     sd.wait()
+    beep_stop()
 
-    beep(600, 0.1)
     print("⏹ Done recording. Processing...")
-
     audio = audio.flatten()
     result = model.transcribe(audio, fp16=False)
     text = result["text"].strip()
+
+    if is_garbage(text):
+        print(f"⚠️ Ignored: '{text}'")
+        return ""
+
     print(f"✅ You said: {text}")
     return text
 
